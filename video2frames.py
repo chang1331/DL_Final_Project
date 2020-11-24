@@ -43,8 +43,12 @@ def main():
         (grabbed, frame) = vs.read()
         if not grabbed:
             break
-        cv2.imwrite(current_file_dir + '/{}/{}_frame_{}.jpeg'.format(video_name, video_name, idx), frame)
-        idx += 1
+        if idx % 40 == 0:
+            cv2.imwrite(current_file_dir + '/{}/{}_frame_{}.jpeg'.format(video_name, video_name, idx), frame)
+            idx += 1
+        else:
+            idx += 1
+            continue
 
     print("[INFO] Cleaning up...")
     vs.release()
