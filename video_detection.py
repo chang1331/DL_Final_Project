@@ -3,7 +3,6 @@ import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 import os
 import cv2
-import matplotlib.pyplot as plt
 import imutils
 import time
 
@@ -56,11 +55,6 @@ def object_detection_api(model, img_array, threshold=0.5, rect_th=1, text_size=0
         # Write the prediction class
         cv2.putText(img_array, str(pred_score[i]), boxes[i][0], cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 255, 0),
                     thickness=text_th)
-    # plt.figure(figsize=(10, 10))  # display the output image
-    # plt.imshow(img_array)
-    # plt.xticks([])
-    # plt.yticks([])
-    # plt.show()
     return img_array
 
 
@@ -76,8 +70,6 @@ try:
     prop = cv2.cv.CV_CAP_PROP_FRAME_COUNT if imutils.is_cv2() else cv2.CAP_PROP_FRAME_COUNT
     total = int(vs.get(prop))
     print("[INFO] {} total frames in video".format(total))
-# an error occurred while trying to determine the total
-# number of frames in the video file
 except:
     print("[INFO] could not determine # of frames in video")
     print("[INFO] no approx. completion time can be provided")
@@ -109,7 +101,6 @@ while True:
 
     # write the output frame to disk
     writer.write(frame)
-
     frameIndex += 1
 
 print("[INFO] cleaning up...")
