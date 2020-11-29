@@ -12,6 +12,9 @@ except NameError:
 data_dir = current_file_dir + '/data/'
 images_folder_list = list(filter(lambda f: 'images_' in f, os.listdir(data_dir)))
 training_images_dir = data_dir + 'training_images'
+# remove existing files in training_images folder
+for f in os.listdir(training_images_dir):
+    os.remove(os.path.join(training_images_dir, f))
 for folder in images_folder_list:
     source = data_dir + folder
     for image in os.listdir(source):
@@ -19,7 +22,7 @@ for folder in images_folder_list:
 frame_file_list = os.listdir(training_images_dir)
 
 # get all frame label txt files and put them into one list
-label_folder_list = list(filter(lambda f: 'labels' in f, os.listdir(data_dir)))
+label_folder_list = list(filter(lambda f: 'labels_' in f, os.listdir(data_dir)))
 label_file_list = []
 for folder in label_folder_list:
     label_file_list = label_file_list + os.listdir(data_dir + folder)
@@ -34,8 +37,10 @@ for frame in frame_file_list:
 
     for folder in label_folder_list:
         try:
+            col_names = ['x1', 'y1', 'x2', 'y2'] if 'jorge' not in folder else ['x1', 'y1', 'x2', 'y2', 'box']
             label_df = pd.read_csv(data_dir + folder + '/{}.txt'.format(frame_name), delim_whitespace=True,
-                                   skiprows=1, header=None, names=['x1', 'y1', 'x2', 'y2'])
+                                   skiprows=1, header=None, names=col_names)
+            label_df = label_df[['x1', 'y1', 'x2', 'y2']]
         except FileNotFoundError:
             continue
         else:
