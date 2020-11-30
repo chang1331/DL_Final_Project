@@ -31,7 +31,7 @@ assert len(label_file_list) == len(frame_file_list), 'number of frames must equa
 
 final_list = []
 for frame in frame_file_list:
-    assert '.jpeg' in frame, 'wrong image type'
+    assert '.jpeg' or '.JPEG' in frame, '{} wrong image type'.format(frame)
     frame_name = frame[:frame.find('.')]
     assert frame_name + '.txt' in label_file_list
 
