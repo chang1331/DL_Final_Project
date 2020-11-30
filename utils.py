@@ -110,7 +110,7 @@ def get_model_instance(num_classes):
 def train(model, optimizer, data_loader):
     model.train()
     device = next(model.parameters()).device
-    for images, targets in data_loader:
+    for idx, (images, targets) in enumerate(data_loader):
         images = list(image.to(device) for image in images)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 

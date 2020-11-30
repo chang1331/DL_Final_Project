@@ -17,7 +17,7 @@ def main():
                                            transform=utils.get_transform(train=True))
 
     # define training data loader
-    data_loader_train = torch.utils.data.DataLoader(package_dataset, batch_size=4, shuffle=True,
+    data_loader_train = torch.utils.data.DataLoader(package_dataset, batch_size=6, shuffle=True,
                                                     collate_fn=utils.collate_fn)
 
     # get model instance
@@ -28,11 +28,11 @@ def main():
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
 
-    # and a learning rate scheduler which decreases the learning rate by 2/3 every 3 epochs
+    # and a learning rate scheduler which decreases the learning rate by 70% every 3 epochs
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.3)
 
     # let's train it for xx epochs
-    num_epochs = 1
+    num_epochs = 10
     for epoch in range(num_epochs):
         print('Epoch {}'.format(epoch))
         # train for one epoch, printing every 10 iterations
@@ -40,7 +40,7 @@ def main():
         # update the learning rate
         lr_scheduler.step()
 
-    torch.save(model.state_dict(), current_file_dir + '/model.pt')
+    torch.save(model.state_dict(), current_file_dir + '/full_model.pt')
 
 
 if __name__ == '__main__':
