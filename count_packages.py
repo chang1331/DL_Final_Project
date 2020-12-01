@@ -34,6 +34,8 @@ ap.add_argument("-i", "--input", required=True,
 	help="path to input video")
 ap.add_argument("-o", "--output", required=True,
 	help="path to output video")
+ap.add_argument("-b", "--batch", type=int, default=4,
+	help="minimum probability to filter weak detections")
 ap.add_argument("-c", "--confidence", type=float, default=0.5,
 	help="minimum probability to filter weak detections")
 ap.add_argument("-t", "--threshold", type=float, default=0.3,
@@ -58,16 +60,29 @@ def get_model_instance(num_classes):
 
     return model
 
-def get_prediction(model, img_array, threshold):
-    # img_array is numpy array of shape (H,W,3)
-    img_tensor = torchvision.transforms.ToTensor()(img_array)
-    img_tensor = torch.unsqueeze(img_tensor, 0).to(device)
-    # print(img_tensor.shape)
+def get_batch_prediction(model, batch_frames, threshold):
+    batch_pred_boxes = []
+    batch_pred_class = []
+    batch_pred_score = []
+    batch_img_tensors = []
+    for frame in batch_frames:
+        img_tensor = torchvision.transforms.ToTensor()(frame).to(device)
+        # img_tensor = torch.unsqueeze(img_tensor, 0).to(device)
+        batch_img_tensors.append(img_tensor)
     with torch.no_grad():
-        pred = model(img_tensor)  # Pass the image to the model
-    pred_class = ['package' for i in list(pred[0]['labels'].cpu().numpy())]  # Get the Prediction Score
-    pred_boxes = [[(i[0], i[1]), (i[2], i[3])] for i in list(pred[0]['boxes'].detach().cpu().numpy())]  # Bounding boxes
-    pred_score = list(pred[0]['scores'].detach().cpu().numpy())
+        pred = model(batch_img_tensors)
+    for output in pred:
+        pred_boxes, pred_class, pred_score = unpack_prediction(output, threshold)
+        batch_pred_boxes.append(pred_boxes)
+        batch_pred_class.append(pred_class)
+        batch_pred_score.append(pred_score)
+    return batch_pred_boxes, batch_pred_class, batch_pred_score
+
+
+def unpack_prediction(pred, threshold):
+    pred_class = ['package' for i in list(pred['labels'].cpu().numpy())]  # Get the Prediction Score
+    pred_boxes = [[(i[0], i[1]), (i[2], i[3])] for i in list(pred['boxes'].detach().cpu().numpy())]  # Bounding boxes
+    pred_score = list(pred['scores'].detach().cpu().numpy())
     # Get list of index with score greater than threshold.
     pred_t = [pred_score.index(x) for x in pred_score if x > threshold]
     if len(pred_t) > 0:
@@ -118,143 +133,150 @@ model.to(device)
 
 # loop over frames from the video file stream
 while True:
-    # read the next frame from the file
-    (grabbed, frame) = vs.read()
-
-    # if the frame was not grabbed, then we have reached the end
-    # of the stream
-    if not grabbed:
-        break
-
     # if the frame dimensions are empty, grab them
-    if W is None or H is None:
-        (H, W) = frame.shape[:2]
+    frame_batch = []
+    for i in range(args["batch"]):
+        (grabbed, frame) = vs.read()
+        if not grabbed:
+            print("Final Count: ", counter)
+            print("[INFO] cleaning up...")
+            writer.release()
+            vs.release()
+            exit()
+        if W is None or H is None:
+            (H, W) = frame.shape[:2]
+        frame_batch.append(frame)
 
     #Pass frame through our network. 
     start = time.time()
-    pred_boxes, pred_class, pred_score = get_prediction(model, frame, 0.5)
+    pred_boxes, pred_class, pred_score = get_batch_prediction(model, frame_batch, 0.5)
     end = time.time()
 
-    # initialize our lists of detected bounding boxes, confidences,
-    # and class IDs, respectively
-    boxes = []
-    confidences = []
-    classIDs = []
-    
-    numBoxes = len(pred_score)
-    # loop over each of the detections
-    for i in range(numBoxes):
-        # extract the class ID and confidence (i.e., probability)
-        # of the current object detection
-        con = pred_score[i]
-        b = pred_boxes[i]
+    for j in range(len(frame_batch)):
+        curr_frame = frame_batch[j]
 
-        # filter out weak predictions by ensuring the detected
-        # probability is greater than the minimum probability
-        if con > args["confidence"]:
-            (x0, y0) = b[0] #upper left corner
-            (x1, y1) = b[1] #bottom right corner
+        # initialize our lists of detected bounding boxes, confidences,
+        # and class IDs, respectively
+        boxes = []
+        confidences = []
+        classIDs = []
+        
+        numBoxes = len(pred_score[j])
+        # loop over each of the detections
+        for i in range(numBoxes):
+            # extract the class ID and confidence (i.e., probability)
+            # of the current object detection
+            con = pred_score[j][i]
+            b = pred_boxes[j][i]
 
-            # update our list of bounding box coordinates,
-            # confidences, and class IDs
-            boxes.append([int(x0), int(y0), int(x1-x0), int(y1-y0)])
-            confidences.append(float(con))
-            classIDs.append(1)
+            # filter out weak predictions by ensuring the detected
+            # probability is greater than the minimum probability
+            if con > args["confidence"]:
+                (x0, y0) = b[0] #upper left corner
+                (x1, y1) = b[1] #bottom right corner
 
-    # apply non-maxima suppression to suppress weak, overlapping
-    # bounding boxes
-    idxs = cv2.dnn.NMSBoxes(boxes, confidences, args["confidence"], args["threshold"])
+                # update our list of bounding box coordinates,
+                # confidences, and class IDs
+                boxes.append([int(x0), int(y0), int(x1-x0), int(y1-y0)])
+                confidences.append(float(con))
+                classIDs.append(1)
 
-    dets = []
-    if len(idxs) > 0:
-        # loop over the indexes we are keeping
-        for i in idxs.flatten():
-            (x, y) = (boxes[i][0], boxes[i][1])
-            (w, h) = (boxes[i][2], boxes[i][3])
-            dets.append([x, y, x+w, y+h, confidences[i]])
+        # apply non-maxima suppression to suppress weak, overlapping
+        # bounding boxes
+        idxs = cv2.dnn.NMSBoxes(boxes, confidences, args["confidence"], args["threshold"])
 
-    np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
-    dets = np.asarray(dets)
-    tracks = tracker.update(dets)
+        dets = []
+        if len(idxs) > 0:
+            # loop over the indexes we are keeping
+            for i in idxs.flatten():
+                (x, y) = (boxes[i][0], boxes[i][1])
+                (w, h) = (boxes[i][2], boxes[i][3])
+                dets.append([x, y, x+w, y+h, confidences[i]])
 
-    boxes = []
-    indexIDs = []
-    c = []
-    previous = memory.copy()
-    memory = {}
+        np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
+        dets = np.asarray(dets)
+        tracks = tracker.update(dets)
 
-    for track in tracks:
-        boxes.append([track[0], track[1], track[2], track[3]])
-        indexIDs.append(int(track[4]))
-        memory[indexIDs[-1]] = boxes[-1]
+        boxes = []
+        indexIDs = []
+        c = []
+        previous = memory.copy()
+        memory = {}
 
-    if len(boxes) > 0:
-        i = int(0)
-        for box in boxes:
-            # extract the bounding box coordinates
-            (x, y) = (int(box[0]), int(box[1]))
-            (w, h) = (int(box[2]), int(box[3]))
+        for track in tracks:
+            boxes.append([track[0], track[1], track[2], track[3]])
+            indexIDs.append(int(track[4]))
+            memory[indexIDs[-1]] = boxes[-1]
 
-            # draw a bounding box rectangle and label on the image
-            # color = [int(c) for c in COLORS[classIDs[i]]]
-            # cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+        if len(boxes) > 0:
+            i = int(0)
+            for box in boxes:
+                # extract the bounding box coordinates
+                (x, y) = (int(box[0]), int(box[1]))
+                (w, h) = (int(box[2]), int(box[3]))
 
-            color = [int(c) for c in COLORS[indexIDs[i] % len(COLORS)]]
-            cv2.rectangle(frame, (x, y), (w, h), color, 2)
+                # draw a bounding box rectangle and label on the image
+                # color = [int(c) for c in COLORS[classIDs[i]]]
+                # cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
 
-            if indexIDs[i] in previous:
-                previous_box = previous[indexIDs[i]]
-                (x2, y2) = (int(previous_box[0]), int(previous_box[1]))
-                (w2, h2) = (int(previous_box[2]), int(previous_box[3]))
-                p0 = (int(x + (w-x)/2), int(y + (h-y)/2))
-                p1 = (int(x2 + (w2-x2)/2), int(y2 + (h2-y2)/2))
-                cv2.line(frame, p0, p1, color, 3)
+                color = [int(c) for c in COLORS[indexIDs[i] % len(COLORS)]]
+                cv2.rectangle(curr_frame, (x, y), (w, h), color, 2)
 
-                if intersect(p0, p1, line[0], line[1]):
-                    counter += 1
+                if indexIDs[i] in previous:
+                    previous_box = previous[indexIDs[i]]
+                    (x2, y2) = (int(previous_box[0]), int(previous_box[1]))
+                    (w2, h2) = (int(previous_box[2]), int(previous_box[3]))
+                    p0 = (int(x + (w-x)/2), int(y + (h-y)/2))
+                    p1 = (int(x2 + (w2-x2)/2), int(y2 + (h2-y2)/2))
+                    cv2.line(curr_frame, p0, p1, color, 3)
 
-            # text = "{}: {:.4f}".format(LABELS[classIDs[i]], confidences[i])
-            text = "{}".format(indexIDs[i])
-            cv2.putText(frame, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-            i += 1
+                    if intersect(p0, p1, line[0], line[1]):
+                        counter += 1
 
-    # draw line
-    cv2.line(frame, line[0], line[1], (0, 255, 255), 5)
+                # text = "{}: {:.4f}".format(LABELS[classIDs[i]], confidences[i])
+                text = "{}".format(indexIDs[i])
+                cv2.putText(curr_frame, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                i += 1
 
-    # draw counter
-    cv2.putText(frame, str(counter), (100,200), cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 255), 5)
-    # counter += 1
+        # draw line
+        cv2.line(curr_frame, line[0], line[1], (0, 255, 255), 5)
 
-    # saves image file
-    cv2.imwrite("sort_output/frame-{}.png".format(frameIndex), frame)
+        # draw counter
+        cv2.putText(curr_frame, str(counter), (100,200), cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 255), 5)
+        # counter += 1
 
-    # check if the video writer is None
-    if writer is None:
-        # initialize our video writer
-        fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-        writer = cv2.VideoWriter(args["output"], fourcc, 30,
-            (frame.shape[1], frame.shape[0]), True)
+        # saves image file
+        cv2.imwrite("sort_output/frame-{}.png".format(frameIndex), curr_frame)
 
-        # some information on processing single frame
-        if total > 0:
-            elap = (end - start)
-            print("[INFO] single frame took {:.4f} seconds".format(elap))
-            print("[INFO] estimated total time to finish: {:.4f}".format(
-                elap * total))
+        # check if the video writer is None
+        if writer is None:
+            # initialize our video writer
+            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+            writer = cv2.VideoWriter(args["output"], fourcc, 30,
+                (curr_frame.shape[1], curr_frame.shape[0]), True)
 
-    # write the output frame to disk
-    writer.write(frame)
+            # some information on processing single frame
+            if total > 0:
+                elap = (end - start)
+                print("[INFO] single batch took {:.4f} seconds".format(elap))
+                print("[INFO] estimated total time to finish: {:.4f}".format(
+                    elap * total / args["batch"]))
 
-    # increase frame index
-    frameIndex += 1
+        # write the output frame to disk
+        writer.write(curr_frame)
 
-    if frameIndex >= 1000:
-        print("[INFO] cleaning up...")
-        writer.release()
-        vs.release()
-        exit()
+        # increase frame index
+        frameIndex += 1
+
+        #Uncomment this to exit at specific frame
+        # if frameIndex >= 1000:
+        #     print("[INFO] cleaning up...")
+        #     writer.release()
+        #     vs.release()
+        #     exit()
 
 # release the file pointers
+print("Final Count: ", counter)
 print("[INFO] cleaning up...")
 writer.release()
 vs.release()
