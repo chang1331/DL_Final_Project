@@ -251,8 +251,9 @@ while True:
         # check if the video writer is None
         if writer is None:
             # initialize our video writer
+            fps = vs.get(cv2.CAP_PROP_FPS)
             fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-            writer = cv2.VideoWriter(args["output"], fourcc, 30,
+            writer = cv2.VideoWriter(args["output"], fourcc, fps,
                 (curr_frame.shape[1], curr_frame.shape[0]), True)
 
             # some information on processing single frame
@@ -268,8 +269,8 @@ while True:
         # increase frame index
         frameIndex += 1
 
-        #Uncomment this to exit at specific frame
-        # if frameIndex >= 1000:
+        # Uncomment this to exit at specific frame
+        # if frameIndex >= 100:
         #     print("[INFO] cleaning up...")
         #     writer.release()
         #     vs.release()
