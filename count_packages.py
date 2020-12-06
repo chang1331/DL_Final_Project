@@ -251,11 +251,11 @@ def do_prediction(model, input_path):
             frameIndex += 1
 
             # Uncomment this to return at specific frame
-            if frameIndex >= 100:
-                writer.release()
-                vs.release()
-                print("Final count for ", input_path, ": ", counter)
-                return counter
+            #if frameIndex >= 100:
+            #    writer.release()
+            #    vs.release()
+            #    print("Final count for ", input_path, ": ", counter)
+            #    return counter
     writer.release()
     vs.release()
     print("Final count for ", input_path, ": ", counter)
