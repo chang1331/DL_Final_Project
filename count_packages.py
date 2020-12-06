@@ -265,9 +265,9 @@ def do_prediction(model, input_path):
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 model = get_model_instance(num_classes=2)
 if torch.cuda.is_available():
-    model.load_state_dict(torch.load(current_file_dir + '/model.pt'))
+    model.load_state_dict(torch.load(current_file_dir + '/full_model.pt'))
 else:
-    model.load_state_dict(torch.load(current_file_dir + '/model.pt', map_location=torch.device('cpu')))
+    model.load_state_dict(torch.load(current_file_dir + '/full_model.pt', map_location=torch.device('cpu')))
 model = model.eval()
 model.to(device)
 
